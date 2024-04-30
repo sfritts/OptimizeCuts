@@ -48,8 +48,6 @@ class OptimizeLinearCuts {
     public $cutLengthIndexes      = [];
     public $currentBarData        = [];
     public $currentPartNo         = [];
-    public $currentCutLength      = 0;
-    public $currentLengthQuantity = 0;
 
     public function __construct() {
 
@@ -195,8 +193,6 @@ class OptimizeLinearCuts {
             "lengthRemaining" => self::STANDARD_LENGTH - ((self::END_CUTS + self::SAW_KERF) * 2),
             "cutsList"        => ""
         ];
-
-        $this->currentLengthQuantity = 0;
     }
 
     private function updateBarData() {
