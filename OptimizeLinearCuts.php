@@ -40,10 +40,10 @@ class OptimizeLinearCuts {
         }
 
         foreach ($cutLengthIndexes as $partNo => &$cutIndexes) {
-            
+
             // set the current part number
             $this->currentPartNo = $partNo;
-            
+
             $this->getNewBar();
 
             // reset the loop
@@ -57,10 +57,10 @@ class OptimizeLinearCuts {
                 try {
                     $this->cutBar($currentCutIndex, $endOfCutLengths);
                 } catch (Exception $ex) {
-                    var_dump($ex->getMessage());
+                    // var_dump("construct: " . $ex->getMessage());
                     switch ($ex->getCode()) {
                         case 1:
-                            var_dump("-=-=-=-case 1-=-=-=-");
+                            var_dump("construct: -=-=-=-case 1-=-=-=-");
                             // check if we have anymore cut lengths
                             if ($currentCutIndex == ($countOfIndexes - 1)) {
                                 // we ran out of cut lengths
@@ -71,12 +71,20 @@ class OptimizeLinearCuts {
                             }
                             break;
                         case 2: // we have run out of lengths to use
-                            var_dump("-=-=-=-case 2-=-=-=-");
+                            var_dump("construct: -=-=-=-case 2-=-=-=-");
                             $partNoIsFinished = TRUE;
                             break;
                         case 3: // this length has no more cuts
-                            var_dump("-=-=-=-case 3-=-=-=-");
+                            var_dump("construct: -=-=-=-case 3-=-=-=-");
                             unset($cutIndexes[$currentCutIndex]);
+                            $currentCutIndex++;
+                            // are their any indexes left?
+                            if (!count($cutIndexes)) {
+                                var_dump("construct: Index Count: " . count($cutIndexes));
+                                var_dump($this->barData);
+                                die("-----------------@ case 3------------------");
+                            }
+
                             break;
                         case 4:
                         case 5:
@@ -114,46 +122,51 @@ class OptimizeLinearCuts {
 
     private function getNewBar() {
         var_dump("-------------------------Get New Bar!!!");
-        $this->currentBarData = [
+        $this->currentBarData        = [
             "partNo"          => $this->currentPartNo,
             "lengthRemaining" => self::STANDARD_LENGTH - ((self::END_CUTS + self::SAW_KERF) * 2),
             "cutsList"        => ""
         ];
+        $this->currentLengthQuantity = 0;
+    }
+
+    private function updateBarData() {
+        $this->barData[] = [
+            "barQuantity"      => 1,
+            "stringDecription" => $this->currentBarData["cutsList"]
+        ];
     }
 
     private function cutBar($currentCutIndex, $endOfCutLengths = FALSE) {
-        //var_dump($currentCutIndex);
-        //var_dump($this->cutLengths[$currentCutIndex]['length']);
 
         $remainingLength = $this->currentBarData['lengthRemaining'] - $this->cutLengths[$currentCutIndex]['length'];
-        var_dump("Current Cut Length: " . $this->cutLengths[$currentCutIndex]['length']);
-        var_dump("Remainging Length " . $remainingLength);
+        //var_dump("cutBar: Current Cut Length: " . $this->cutLengths[$currentCutIndex]['length']);
+        //var_dump("cutBar: Remainging Length " . $remainingLength);
         // does it fit on the bar?
         if ($remainingLength < $this->cutLengths[$currentCutIndex]['length']) {
-            var_dump("Remaining is less than the cut length");
+            var_dump("cutBar: Remaining is less than the cut length");
             if ($endOfCutLengths === FALSE) {
-                var_dump("--Cut Lengths Remainging--");
+                //var_dump("cutBar: --==--Cut Lengths Remainging--==--");
                 // we ran out of space for this length, check for more.
                 throw new Exception("Check for more cut lengths", 1);
             } else {
-                var_dump("--End of Cut Lengths--");
                 // ran out of lengths to try. get a new bar and go back to the longest length
+                $this->updateBarData();
                 $this->getNewBar();
                 throw new Exception("Out of length, get new bar", 5);
             }
         }
-        
-        if($remainingLength < 0){
+
+        if ($remainingLength < 0) {
+            $this->updateBarData();
             // we need a new bar
             $this->getNewBar();
             throw new Exception("Got a new bar", 4);
         }
 
         // cut the bar and decrement the quantity by one.
-        $this->currentBarData = [
-            "lengthRemaining" => $remainingLength,
-        ];
-        
+        $this->currentBarData["lengthRemaining"] = $remainingLength;
+
         // add one to current Length Quantity
         $this->currentLengthQuantity++;
 
@@ -162,12 +175,14 @@ class OptimizeLinearCuts {
 
         // are there anymore cuts at this length needed?
         if ($this->cutLengths[$currentCutIndex]['quantity'] == 0) {
+
+            // save the cut description to the cuts string.
+            $this->currentBarData["cutsList"] .= $this->currentLengthQuantity . " @ " . $this->cutLengths[$currentCutIndex]['length'] . ", ";
+            $this->currentLengthQuantity      = 0;
+
             // remove this cut length from the list.
             unset($this->cutLengths[$currentCutIndex]);
 
-            // save the cut description to the cuts string.
-            $this->currentBarData["cutsList"] .= $this->currentLengthQuantity . " @ " . $this->cutLengths[$currentCutIndex]['length'];
-            
             // notify the originating function so we can remove the index as well.
             throw new Exception("Remove Cut Length from List", 3);
         }
