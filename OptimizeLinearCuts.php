@@ -45,9 +45,10 @@ class OptimizeLinearCuts {
      * 
      * @var array cutLengthIndexes
      */
-    public $cutLengthIndexes      = [];
-    public $currentBarData        = [];
-    public $currentPartNo         = [];
+    public $cutLengthIndexes = [];
+    public $currentBarData   = [];
+    public $currentPartNo    = "";
+    public $currentCutCount  = 0;
 
     public function __construct() {
 
@@ -57,32 +58,23 @@ class OptimizeLinearCuts {
 
         foreach ($this->cutLengthIndexes as $partNo => $indexList) {
 
+            echo "\n\nStart New Part Number: " . $partNo . "\n";
+
             // set the current part number
             $this->currentPartNo = $partNo;
 
             $this->getNewBar(TRUE); // get first bar for this part number.
             // reset the loop
             $nextPartNumber  = FALSE;
-            $endOfCutLengths = FALSE;
             $currentCutIndex = 0; // start at the beginning of the list.
-            $countOfIndexes  = count($indexList); // how many length indexes are there to start with?
 
             while ($nextPartNumber === FALSE) {
-                // cut the bar
-                // responses : 
-                //     cut was successful. got to the next one.
-                //     cut failed:
-                //         IF the bar is not long enough but there are cuts smaller lengths left to try
-                //             move to the next length
-                //         IF the bar is not long enough and there are not any smaller lengths left to try
-                //             check if there are anymore cut lengths left.
-                //                 IF there are lengths left, go to the longest one and get a new bar.
-                //                 IF no cuts remaining. got to the next part number.
-                //
-                if ($this->cutBar($currentCutIndex, $endOfCutLengths)) {
-                    $this->removeCutLengthQuantity($currentCutIndex);
+                if ($this->cutBar($currentCutIndex)) {
 
                     echo("CutLength Quantity: Length " . $this->cutLengths[$currentCutIndex]["length"] . " :: Quantity " . $this->cutLengths[$currentCutIndex]["quantity"] . "\n");
+
+                    $this->removeCutLengthQuantity($currentCutIndex);
+                    $this->addCurrentCutCount();
 
                     $lengthsRemaining = $this->checkForRemainingLengthOptions($indexList);
                     if ($lengthsRemaining !== FALSE) {
@@ -93,7 +85,7 @@ class OptimizeLinearCuts {
                 } else {
                     echo "\nCut doesn't fit. \n";
                     // are there other length options?
-                    if ($countOfIndexes > 1) {
+                    if (count($indexList) > 1) {
                         echo "Other Quantities Available.\n";
                         $lookForNextQuantity = TRUE;
                         while ($lookForNextQuantity === TRUE) {
@@ -102,6 +94,7 @@ class OptimizeLinearCuts {
                             if (in_array($currentCutIndex, $indexList)) {
                                 echo "Found index: " . $currentCutIndex . "\n";
                                 if ($this->checkCutLengthRemaining($currentCutIndex)) {
+                                    $this->updateCurrentBarCutsList($currentCutIndex);
                                     $lookForNextQuantity = FALSE; // stop looking
                                 }
                             } else {
@@ -126,8 +119,11 @@ class OptimizeLinearCuts {
                     }
                 }
             }
-            var_dump($this->currentBarData);
         }
+    }
+
+    private function addCurrentCutCount() {
+        $this->currentCutCount++;
     }
 
     private function checkCutLengthRemaining($cutIndex) {
@@ -165,41 +161,46 @@ class OptimizeLinearCuts {
      * example, and to make it portable, it is just an array.
      */
     private function setCutLengths() {
-        /**
-          $this->cutLengths = [
-          ["partNo" => 500, "length" => 50, "quantity" => 12],
-          ["partNo" => 495, "length" => 42, "quantity" => 12],
-          ["partNo" => 495, "length" => 16, "quantity" => 12],
-          ["partNo" => 500, "length" => 50, "quantity" => 4],
-          ["partNo" => 500, "length" => 43, "quantity" => 4],
-          ["partNo" => 123, "length" => 17, "quantity" => 19]
-          ];* */
+
         $this->cutLengths = [
-            ["partNo" => 100, "length" => 50, "quantity" => 12],
-            ["partNo" => 100, "length" => 45, "quantity" => 5],
-            ["partNo" => 100, "length" => 12, "quantity" => 9],
+            ["partNo" => 500, "length" => 50, "quantity" => 12],
+            ["partNo" => 495, "length" => 42, "quantity" => 12],
+            ["partNo" => 495, "length" => 16, "quantity" => 12],
+            ["partNo" => 500, "length" => 50, "quantity" => 4],
+            ["partNo" => 500, "length" => 43, "quantity" => 4],
+            ["partNo" => 123, "length" => 17, "quantity" => 19]
         ];
 
         array_multisort($this->cutLengths, SORT_DESC);
     }
 
     private function getNewBar($firstBar = FALSE) {
-        echo("\nGet New Bar!!!\n");
+        echo("\n\n----------Get New Bar!!!----------\n");
 
         // update bar info...after first bar select.
+        if (!$firstBar) {
+            $this->updateBarData();
+        }
 
         $this->currentBarData = [
             "partNo"          => $this->currentPartNo,
             "lengthRemaining" => self::STANDARD_LENGTH - ((self::END_CUTS + self::SAW_KERF) * 2),
-            "cutsList"        => ""
+            "cutsList"        => []
         ];
+
+        $this->currentCutCount = 0;
     }
 
     private function updateBarData() {
         $this->barData[] = [
+            "partNo"           => $this->currentBarData['partNo'],
             "barQuantity"      => 1,
-            "stringDecription" => $this->currentBarData["cutsList"]
+            "stringDecription" => implode(", ", $this->currentBarData["cutsList"])
         ];
+    }
+
+    private function updateCurrentBarCutsList($currentCutIndex) {
+        $this->currentBarData['cutsList'][] = $this->currentCutCount . " @ " . $this->cutLengths[$currentCutIndex]['length'] . "\"";
     }
 
     private function removeCutLengthQuantity($currentCutIndex) {
@@ -210,8 +211,8 @@ class OptimizeLinearCuts {
         $this->cutLengths[$currentCutIndex]["lengthRemaining"];
     }
 
-    private function cutBar($currentCutIndex, $endOfCutLengths = FALSE) {
-        echo "\ncutBar: Attempting to cut bar. Length: " .($this->cutLengths[$currentCutIndex]['length'] + self::SAW_KERF). "\n";
+    private function cutBar($currentCutIndex) {
+        echo "\ncutBar: Attempting to cut bar. Length: " . ($this->cutLengths[$currentCutIndex]['length'] + self::SAW_KERF) . "\n";
         $newRemainingLength = $this->currentBarData['lengthRemaining'] - ($this->cutLengths[$currentCutIndex]['length'] + self::SAW_KERF);
 
         // does the cut fit on this bar?
